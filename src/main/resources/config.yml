@@ -1,0 +1,10 @@
+# List of items to track (case-insensitive)
+tracked-items:
+  - ender_pearl
+  - blaze_rod
+  - eye_of_ender
+  - iron_ingot
+  - gold_ingot
+
+# Update interval in ticks (20 ticks = 1 second)
+update-interval: 40
