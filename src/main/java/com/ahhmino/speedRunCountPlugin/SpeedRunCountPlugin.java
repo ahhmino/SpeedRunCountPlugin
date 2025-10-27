@@ -17,34 +17,31 @@ import java.util.Objects;
 public final class SpeedRunCountPlugin extends JavaPlugin {
 
     private List<Material> trackedItems = new ArrayList<>();
+    private int updateIntervalTicks;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        loadTrackedItems();
+        loadConfigValues();
 
         // Repeating scoreboard updater
         new BukkitRunnable() {
             @Override
             public void run() {
-                int interval = getConfig().getInt("update-interval", 40); // ticks, default 2s
-                int totalPlayers = Bukkit.getOnlinePlayers().size();
-
-                // Calculate global totals for each tracked item once
                 var globalCounts = calculateGlobalCounts();
-
                 for (Player player : Bukkit.getOnlinePlayers()) {
                     updateScoreboard(player, globalCounts);
                 }
             }
-        }.runTaskTimer(this, 0L, getConfig().getInt("update-interval", 40));
+        }.runTaskTimer(this, 0L, updateIntervalTicks);
 
         getLogger().info("SpeedRunCountPlugin enabled!");
     }
 
-    private void loadTrackedItems() {
+    private void loadConfigValues() {
         trackedItems.clear();
         List<String> list = getConfig().getStringList("tracked-items");
+        updateIntervalTicks = getConfig().getInt("update-interval", 40);
 
         for (String name : list) {
             try {
@@ -76,8 +73,8 @@ public final class SpeedRunCountPlugin extends JavaPlugin {
         // Per-player counts
         for (Material mat : trackedItems) {
             int myCount = countItems(player, mat);
-            String itemName = mat.name().replace("_", " ").toLowerCase();
-            setLine(board, obj, "p_" + mat.name(), String.format("§f%s: §a%d", capitalize(itemName), myCount), line--);
+            String itemName = formatName(mat);
+            setLine(board, obj, "p_" + mat.name(), "§f" + itemName + ": §a" + myCount, line--);
         }
 
         // Spacer
@@ -85,9 +82,9 @@ public final class SpeedRunCountPlugin extends JavaPlugin {
 
         // Global totals
         for (ItemCount count : globalCounts) {
-            String itemName = count.material.name().replace("_", " ").toLowerCase();
+            String itemName = formatName(count.material);
             setLine(board, obj, "g_" + count.material.name(),
-                    String.format("§eAll %s: §b%d", capitalize(itemName), count.total), line--);
+                    "§eAll " + itemName + ": §b" + count.total, line--);
         }
 
         player.setScoreboard(board);
@@ -112,17 +109,24 @@ public final class SpeedRunCountPlugin extends JavaPlugin {
                 .sum();
     }
 
+    // --- FIXED: invisible entry system to hide weird keys ---
     private void setLine(Scoreboard board, Objective obj, String key, String text, int score) {
         Team team = board.getTeam(key);
         if (team == null) team = board.registerNewTeam(key);
         team.prefix(Component.text(text));
-        team.addEntry(key);
-        obj.getScore(key).setScore(score);
+
+        // Use a unique invisible entry (Minecraft still requires one)
+        String entry = "§" + score; // color code trick: invisible but unique
+        if (!team.getEntries().contains(entry)) {
+            team.addEntry(entry);
+        }
+
+        obj.getScore(entry).setScore(score);
     }
 
-    private String capitalize(String text) {
-        if (text.isEmpty()) return text;
-        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
+    private String formatName(Material mat) {
+        String name = mat.name().replace("_", " ").toLowerCase();
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 
     @Override
@@ -130,12 +134,20 @@ public final class SpeedRunCountPlugin extends JavaPlugin {
         getLogger().info("SpeedRunCountPlugin disabled.");
     }
 
+    // --- RELOAD COMMAND ---
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (cmd.getName().equalsIgnoreCase("speedruncount")) {
             if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
                 reloadConfig();
-                loadTrackedItems();
+                loadConfigValues();
+
+                // Immediately refresh everyone’s scoreboard
+                List<ItemCount> counts = calculateGlobalCounts();
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    updateScoreboard(player, counts);
+                }
+
                 sender.sendMessage(Component.text("§aSpeedRunCount config reloaded!"));
                 return true;
             }
@@ -146,7 +158,6 @@ public final class SpeedRunCountPlugin extends JavaPlugin {
     private static class ItemCount {
         final Material material;
         final int total;
-
         ItemCount(Material material, int total) {
             this.material = material;
             this.total = total;
