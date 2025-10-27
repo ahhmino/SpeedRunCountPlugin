@@ -1,0 +1,4 @@
+name: SpeedRunCountPlugin
+version: '1.0-SNAPSHOT'
+main: com.ahhmino.speedRunCountPlugin.SpeedRunCountPlugin
+api-version: '1.21'
